@@ -1,11 +1,14 @@
+import re
+import os
+from argparse import ArgumentParser
+from collections import Counter
 import pandas as pd
 import numpy as np
+import statistics
 import seaborn as sns
 import matplotlib.pyplot as plt
-import re
-import json
-import statistics
-from collections import Counter
+
+import pickle
 from sklearn import preprocessing
 from sklearn.model_selection import train_test_split, GridSearchCV, cross_val_score, RepeatedStratifiedKFold
 from sklearn.linear_model import LogisticRegression
@@ -25,20 +28,6 @@ Models
 - Logistic Regression
 - SVM
 '''
-class NpEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, (np.int_, np.intc, np.intp, np.int8,
-                            np.int16, np.int32, np.int64, np.uint8,
-                            np.uint16, np.uint32, np.uint64)):
-            return int(obj)
-        elif isinstance(obj, (np.float_, np.float16, np.float32,
-                              np.float64)):
-            return float(obj)
-        elif isinstance(obj, (np.ndarray,)):
-            return obj.tolist()
-        return json.JSONEncoder.default(self, obj)
-
-
 class DataCleaningAndPreprocess:
 	'''
 	Reads epidemiology dataset from csv and prepares it for ML processing
@@ -387,6 +376,9 @@ class implementLogisticRegression:
 									verbose=0, warm_start=False
 									)
 		self.logReg.fit(self.X_train, self.y_train)
+		with open('./Models/lr_trained.pkl', 'wb') as f:
+			pickle.dump(self.logReg, f)
+		f.close()
 		print('Training completed successfully')
 
 	def predict(self):
@@ -415,8 +407,11 @@ class implementSVM:
 
 	def train(self):
 		print('\nBegin training')
-		self.svm = SVC(kernel='linear', C=100)
-		self.svm.fit(self.X_train, self.y_train)
+		self.svm = SVC(probability=True, kernel='linear', C=100)
+		self.svm.fit(self.X_train, self.y_train) 
+		with open('./Models/svm_trained.pkl', 'wb') as f:
+			pickle.dump(self.svm, f)
+		f.close()
 		print('Training completed successfully')
 
 	def predict(self):
@@ -428,10 +423,11 @@ class implementSVM:
 		correct_predictions = c_matrix[0][0] + c_matrix[1][1]
 		wrong_predictions = c_matrix[0][1] + c_matrix[1][0]
 		print('We have {} positive predictions and {} negative predictions'.format(correct_predictions, wrong_predictions))
+		print(f'Classification report:\n{classification_report(self.y_test, self.outcome_predict)}')
 
 
 class implementGradientBoosting:
-	def __init__(self, training_data, testing_data, validation_data):
+	def __init__(self, training_data, testing_data, validation_data, loadExistingModel=False):
 		print('Initialising Gradient Boosting Model')
 		self.X_train = training_data[0]
 		self.y_train = np.ravel(training_data[1])
@@ -446,6 +442,9 @@ class implementGradientBoosting:
 		print('\nBegin training')
 		self.gbm = GradientBoostingClassifier(n_estimators=30, learning_rate=lr, max_depth=3, random_state=0)
 		self.gbm.fit(self.X_train, self.y_train)
+		with open('./Models/gbm_trained.pkl', 'wb') as f:
+			pickle.dump(self.gbm, f)
+		f.close()
 
 		# print(f'\nLearning rate: {lr}')
 		# print("Accuracy score (training): {0:.3f}".format(self.gbm.score(self.X_train, self.y_train)))
@@ -462,30 +461,60 @@ class implementGradientBoosting:
 		correct_predictions = c_matrix[0][0] + c_matrix[1][1]
 		wrong_predictions = c_matrix[0][1] + c_matrix[1][0]
 		print('We have {} positive predictions and {} negative predictions'.format(correct_predictions, wrong_predictions))
+		print(f'Classification report:\n{classification_report(self.y_test, self.outcome_predict)}')
 
 
-def compare_models(lr, svm, gbm):
-	# compare ROC for logistic regression and gradient boosting
-	print('\nPlotting ROC curve')
-	lr_roc_auc = roc_auc_score(lr.y_test, lr.outcome_predict)
-	gbm_roc_auc = roc_auc_score(gbm.y_test, gbm.outcome_predict)
-	fpr_1, tpr_1, thresholds_1 = roc_curve(lr.y_test, lr.logReg.predict_proba(lr.X_test)[:,1])
-	fpr_2, tpr_2, thresholds_2 = roc_curve(gbm.y_test, gbm.gbm.predict_proba(gbm.X_test)[:,1])
-	plt.figure()
-	plt.plot(fpr_1, tpr_1, label='Logistic Regression Model (area = %0.2f)' % lr_roc_auc)
-	plt.plot(fpr_2, tpr_2, label='Gradient Boosting Model (area = %0.2f)' % gbm_roc_auc)
-	plt.plot([0, 1], [0, 1],'r--')
-	plt.xlim([0.0, 1.0])
-	plt.ylim([0.0, 1.05])
-	plt.xlabel('False Positive Rate')
-	plt.ylabel('True Positive Rate')
-	plt.title('Receiver operating characteristic')
-	plt.legend(loc="lower right")
-	plt.savefig('ROC Comparison LR and GBM')
-	plt.show()
+class CompareModels:
+	def __init__(self, models, testing_data):
+		self.models = models
+		self.X_test = testing_data[0]
+		self.y_test = testing_data[1]
+	
+	def plot_ROC_curve(self):	
+		print('\nPlotting ROC curve')
+		roc_auc_1 = roc_auc_score(self.y_test, self.models[0][1])
+		roc_auc_2 = roc_auc_score(self.y_test, self.models[1][1])
+		roc_auc_3 = roc_auc_score(self.y_test, self.models[2][1])
 
+		fpr_1, tpr_1, thresholds_1 = roc_curve(self.y_test, self.models[0][0].predict_proba(self.X_test)[:,1])
+		fpr_2, tpr_2, thresholds_2 = roc_curve(self.y_test, self.models[1][0].predict_proba(self.X_test)[:,1])
+		fpr_3, tpr_3, thresholds_3 = roc_curve(self.y_test, self.models[2][0].predict_proba(self.X_test)[:,1])
+
+		plt.figure()
+		plt.plot(fpr_1, tpr_1, label='{} (area = {:0.2f})'.format(self.models[0][2], roc_auc_1))
+		plt.plot(fpr_2, tpr_2, label='{} (area = {:0.2f})'.format(self.models[1][2], roc_auc_2))
+		plt.plot(fpr_3, tpr_3, label='{} (area = {:0.2f})'.format(self.models[2][2], roc_auc_3))
+
+		plt.plot([0, 1], [0, 1],'r--')
+		plt.xlim([0.0, 1.0])
+		plt.ylim([0.0, 1.05])
+		plt.xlabel('False Positive Rate')
+		plt.ylabel('True Positive Rate')
+		plt.title('Receiver operating characteristic')
+		plt.legend(loc="lower right")
+		plt.savefig('ROC Comparison LR SVM GBM')
+		plt.show()
+
+	def plot_boxplot(self):
+		acc_results = []
+		model_names = []
+		for model, prediction, name in self.models:
+			repeat_strat_kfold = RepeatedStratifiedKFold(n_splits=10, n_repeats=10, random_state=7)
+			cross_val_result = cross_val_score(model, self.X_test, self.y_test, cv=repeat_strat_kfold, scoring='accuracy')
+			acc_results.append(cross_val_result)
+			model_names.append(name)
+			outcome_msg = '{}: {:0.4f} ({:0.4f})'.format(name, cross_val_result.mean(), cross_val_result.std())
+			print(outcome_msg)
+
+		bp_fig = plt.figure()
+		bp_fig.suptitle('Model Comparison')
+		ax = bp_fig.add_subplot(111)
+		plt.boxplot(acc_results)
+		ax.set_xticklabels(model_names)
+		plt.show()
 
 def main():
+	args = parse_arguments()
 	data = DataCleaningAndPreprocess('modified_latestdata.csv')
 	data.clean_df()
 	# data.data_explore()
@@ -497,20 +526,55 @@ def main():
 
 	# check_class_ratio(X_train, X_test, y_train, y_test, is_smote)
 
-	implement_lr = implementLogisticRegression([X_train, y_train], [X_test, y_test])
-	implement_lr.train()
-	implement_lr.predict()
-	print('----------------------------------------------')
-	implement_svm = implementSVM([X_train, y_train], [X_test, y_test])
-	implement_svm.train()
-	implement_svm.predict()
-	print('----------------------------------------------')
-	implement_gbm = implementGradientBoosting([X_train, y_train], [X_test, y_test], [X_val, y_val])
-	implement_gbm.train(0.1)
-	implement_gbm.predict()
 
-	compare_models(implement_lr, implement_svm, implement_gbm)
+	if not os.path.isdir('./Models'):
+		os.mkdir('./Models')
 
+	lr = implementLogisticRegression([X_train, y_train], [X_test, y_test])
+
+	if args.load_model == 'True':
+		with open('./Models/lr_trained.pkl', 'rb') as f:
+			lr.logReg = pickle.load(f)
+		f.close()
+	else:
+		lr.train()
+
+	lr.predict()
+	print('----------------------------------------------')
+	svm = implementSVM([X_train, y_train], [X_test, y_test])
+
+	if args.load_model == 'True':
+		with open('./Models/svm_trained.pkl', 'rb') as f:
+			svm.svm = pickle.load(f)
+		f.close()
+	else:
+		svm.train()
+
+	svm.predict()
+	print('----------------------------------------------')
+	gbm = implementGradientBoosting([X_train, y_train], [X_test, y_test], [X_val, y_val])
+
+	if args.load_model == 'True':
+		with open('./Models/gbm_trained.pkl', 'rb') as f:
+			gbm.gbm = pickle.load(f)
+		f.close()
+	else:
+		gbm.train(0.1)
+
+	gbm.predict()
+
+	model_comparator = CompareModels([(lr.logReg, lr.outcome_predict, 'Logistic Regression Model'), (svm.svm, svm.outcome_predict, 'Support Vector Machine'), (gbm.gbm, gbm.outcome_predict, 'Gradient Boosting Model')], [X_test, y_test])
+	# model_comparator.plot_ROC_curve()
+	model_comparator.plot_boxplot()
+
+def parse_arguments():
+	parser = ArgumentParser(description='')
+	parser.add_argument('-lm', '--load_model',
+						type=str,
+						default='False',
+						help='Choice to load existing ML models or train new ones'
+						)
+	return parser.parse_args()
 
 if __name__ == '__main__':
 	main()
