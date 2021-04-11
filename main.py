@@ -369,6 +369,100 @@ def check_class_ratio(x_train, x_test, y_train, y_test, is_smote):
 	print('Percentage of positive class samples: {}'.format(100 * test_outcome_counts[1] / len(y_test_df)))
 
 
+class implementLogisticRegression:
+	def __init__ (self, training_data, testing_data):
+		print('Initialising Logistic Regression Model')
+		self.X_train = training_data[0]
+		self.y_train = np.ravel(training_data[1])
+		self.X_test = testing_data[0]
+		self.y_test = np.ravel(testing_data[1])
+		self.logReg = None
+		self.outcome_predict = 0
+
+	def train(self):
+		print('\nBegin training')
+		self.logReg = LogisticRegression(class_weight='balanced', dual=False, intercept_scaling=1, 
+									max_iter=500, n_jobs=1, random_state=0, tol=0.0001, penalty='l2',
+									verbose=0, warm_start=False
+									)
+		self.logReg.fit(self.X_train, self.y_train)
+		print('Training completed successfully')
+
+	def predict(self):
+		print('\nRunning prediction on test data')
+		self.outcome_predict = self.logReg.predict(self.X_test)
+		# print('Accuracy on test set: {:.2f}'.format(self.logReg.score(self.X_test, self.y_test)))
+		print(f'Accuracy: {round(accuracy_score(self.y_test, self.outcome_predict), 3)}')
+
+		c_matrix = confusion_matrix(self.y_test, self.outcome_predict)
+		correct_predictions = c_matrix[0][0] + c_matrix[1][1]
+		wrong_predictions = c_matrix[0][1] + c_matrix[1][0]
+		print('We have {} positive predictions and {} negative predictions'.format(correct_predictions, wrong_predictions))
+
+		print(f'Classification report:\n{classification_report(self.y_test, self.outcome_predict)}')
+
+
+class implementSVM:
+	def __init__(self, training_data, testing_data):
+		print('Initialising Support Vector Machine')
+		self.X_train = training_data[0]
+		self.y_train = np.ravel(training_data[1])
+		self.X_test = testing_data[0]
+		self.y_test = np.ravel(testing_data[1])
+		self.svm = None
+		self.outcome_predict = 0
+
+	def train(self):
+		print('\nBegin training')
+		self.svm = SVC(kernel='linear', C=100)
+		self.svm.fit(self.X_train, self.y_train)
+		print('Training completed successfully')
+
+	def predict(self):
+		print('\nRunning prediction on test data')
+		self.outcome_predict = self.svm.predict(self.X_test)
+
+		print(f'Accuracy: {round(accuracy_score(self.y_test, self.outcome_predict), 3)}')
+		c_matrix = confusion_matrix(self.y_test, self.outcome_predict)
+		correct_predictions = c_matrix[0][0] + c_matrix[1][1]
+		wrong_predictions = c_matrix[0][1] + c_matrix[1][0]
+		print('We have {} positive predictions and {} negative predictions'.format(correct_predictions, wrong_predictions))
+
+
+class implementGradientBoosting:
+	def __init__(self, training_data, testing_data, validation_data):
+		print('Initialising Gradient Boosting Model')
+		self.X_train = training_data[0]
+		self.y_train = np.ravel(training_data[1])
+		self.X_test = testing_data[0]
+		self.y_test = np.ravel(testing_data[1])
+		self.X_val = validation_data[0]
+		self.y_val = np.ravel(validation_data[1])
+		self.gbm = None
+		self.outcome_predict = 0
+
+	def train(self, lr):
+		print('\nBegin training')
+		self.gbm = GradientBoostingClassifier(n_estimators=30, learning_rate=lr, max_depth=3, random_state=0)
+		self.gbm.fit(self.X_train, self.y_train)
+
+		# print(f'\nLearning rate: {lr}')
+		# print("Accuracy score (training): {0:.3f}".format(self.gbm.score(self.X_train, self.y_train)))
+		# print("Accuracy score (validation): {0:.3f}\n".format(self.gbm.score(self.X_val, self.y_val)))
+
+		print('Training completed successfully')
+
+	def predict(self):
+		print('\nRunning predictions using test data')
+		self.outcome_predict = self.gbm.predict(self.X_test)
+		
+		print(f'Accuracy: {round(accuracy_score(self.y_test, self.outcome_predict), 3)}')
+		c_matrix = confusion_matrix(self.y_test, self.outcome_predict)
+		correct_predictions = c_matrix[0][0] + c_matrix[1][1]
+		wrong_predictions = c_matrix[0][1] + c_matrix[1][0]
+		print('We have {} positive predictions and {} negative predictions'.format(correct_predictions, wrong_predictions))
+
+
 def main():
 	data = DataCleaningAndPreprocess('modified_latestdata.csv')
 	data.clean_df()
@@ -380,6 +474,18 @@ def main():
 	# yX, yX_corr, yX_abs_corr = data.create_corr_matrix(y_train, x_train, True)
 
 	# check_class_ratio(X_train, X_test, y_train, y_test, is_smote)
+
+	implement_lr = implementLogisticRegression([X_train, y_train], [X_test, y_test])
+	implement_lr.train()
+	implement_lr.predict()
+	print('----------------------------------------------')
+	implement_svm = implementSVM([X_train, y_train], [X_test, y_test])
+	implement_svm.train()
+	implement_svm.predict()
+	print('----------------------------------------------')
+	implement_gbm = implementGradientBoosting([X_train, y_train], [X_test, y_test], [X_val, y_val])
+	implement_gbm.train(0.1)
+	implement_gbm.predict()
 
 
 if __name__ == '__main__':
