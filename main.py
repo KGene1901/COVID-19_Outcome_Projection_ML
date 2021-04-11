@@ -6,6 +6,13 @@ import re
 import json
 import statistics
 from collections import Counter
+from sklearn import preprocessing
+from sklearn.model_selection import train_test_split, GridSearchCV, cross_val_score, RepeatedStratifiedKFold
+from sklearn.linear_model import LogisticRegression
+from sklearn.svm import SVC
+from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.metrics import confusion_matrix, accuracy_score, classification_report, roc_auc_score, roc_curve
+from imblearn.over_sampling import SMOTE
 
 '''
 Task description:
@@ -13,18 +20,12 @@ choose 3 ML predictive models  to solve ONE problem with the Covid-19 dataset an
 
 Problem: Outcome Projection
 
--> Classification: Quick discharge / Severe and Unstable / Death
--> Regression: 
-
-
 Models
-- Light Gradient Boosted Model / Random Forest
+- Gradient Boosted Model / Random Forest
 - Logistic Regression
 - SVM
-- Multivariate Linear Regression
 '''
-class NumpyEncoder(json.JSONEncoder):
-    """ Special json encoder for np types """
+class NpEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, (np.int_, np.intc, np.intp, np.int8,
                             np.int16, np.int32, np.int64, np.uint8,
@@ -463,6 +464,27 @@ class implementGradientBoosting:
 		print('We have {} positive predictions and {} negative predictions'.format(correct_predictions, wrong_predictions))
 
 
+def compare_models(lr, svm, gbm):
+	# compare ROC for logistic regression and gradient boosting
+	print('\nPlotting ROC curve')
+	lr_roc_auc = roc_auc_score(lr.y_test, lr.outcome_predict)
+	gbm_roc_auc = roc_auc_score(gbm.y_test, gbm.outcome_predict)
+	fpr_1, tpr_1, thresholds_1 = roc_curve(lr.y_test, lr.logReg.predict_proba(lr.X_test)[:,1])
+	fpr_2, tpr_2, thresholds_2 = roc_curve(gbm.y_test, gbm.gbm.predict_proba(gbm.X_test)[:,1])
+	plt.figure()
+	plt.plot(fpr_1, tpr_1, label='Logistic Regression Model (area = %0.2f)' % lr_roc_auc)
+	plt.plot(fpr_2, tpr_2, label='Gradient Boosting Model (area = %0.2f)' % gbm_roc_auc)
+	plt.plot([0, 1], [0, 1],'r--')
+	plt.xlim([0.0, 1.0])
+	plt.ylim([0.0, 1.05])
+	plt.xlabel('False Positive Rate')
+	plt.ylabel('True Positive Rate')
+	plt.title('Receiver operating characteristic')
+	plt.legend(loc="lower right")
+	plt.savefig('ROC Comparison LR and GBM')
+	plt.show()
+
+
 def main():
 	data = DataCleaningAndPreprocess('modified_latestdata.csv')
 	data.clean_df()
@@ -486,6 +508,8 @@ def main():
 	implement_gbm = implementGradientBoosting([X_train, y_train], [X_test, y_test], [X_val, y_val])
 	implement_gbm.train(0.1)
 	implement_gbm.predict()
+
+	compare_models(implement_lr, implement_svm, implement_gbm)
 
 
 if __name__ == '__main__':
